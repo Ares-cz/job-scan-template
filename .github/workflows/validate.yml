@@ -1,0 +1,46 @@
+name: validate
+
+# 每次推送（包括每日 Routine 的「scan YYYY-MM-DD」提交）后：校验两份配置、jobs.csv 结构、sources_found.md 格式，
+# 离线生成一次计划简报，并运行单元测试。只读检查、不联网（fetch_tool selftest 需人工触发），不需要任何密钥；
+# 失败时 GitHub 会按你的通知设置提醒。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "jobs.csv"
+      - "dismissed.csv"
+      - "config/**"
+      - "PROMPT.md"
+      - "sources_found.md"
+      - "learned_rules.md"
+      - "tools/**"
+      - "tests/**"
+      - ".github/workflows/validate.yml"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check config (profile.toml + sources.toml)
+        run: python3 tools/config.py --check
+      - name: Check config (profile.example.toml)
+        run: python3 tools/config.py --check --profile config/profile.example.toml
+      - name: Validate jobs.csv
+        run: python3 tools/jobs_tool.py validate
+      - name: Generate brief offline
+        # --quiet：只写文件不打印正文，避免把 profile 中的邮箱、出生月等打进 CI 日志
+        run: python3 tools/plan_tool.py brief --today 2026-11-20 --out /tmp/ci-out --quiet
+      - name: Lint sources_found.md
+        run: python3 tools/sources_tool.py lint
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v

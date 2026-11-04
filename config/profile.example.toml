@@ -1,0 +1,172 @@
+# =============================================================================
+# config/profile.example.toml —— 虚构人物的完整示例（李明，材料学硕士，找德国工业界研发岗）
+#
+# 用途：展示每个字段怎么写、哪些可以省略、省略时怎么写。CI 用它跑 `python3 tools/config.py --check --profile config/profile.example.toml`。
+# 把它复制为 config/profile.toml 并改成你自己的信息即可开始使用。
+#
+# 约定：
+# - 「必填」字段缺失会报错；「可省」字段可以整行删掉（示例里用「# 省略写法：」注释说明省略后的效果）。
+# - 日期写 TOML 日期（2026-03-31，不加引号）；terms 写 { 语言 = [词, …] }。
+# =============================================================================
+
+# 配置格式版本；必填，固定为 1
+schema = 1
+
+[identity]
+# 姓名；必填
+name = "李明"
+# 英文/拼音名；可省（省略写法：删掉本行，海外材料中只用 name）
+name_en = "Ming Li"
+# 日报唯一收件地址；必填
+email = "ming.li.example@example.com"
+# IANA 时区；必填
+timezone = "Europe/Berlin"
+# 输出语言代码；必填（这里用英文：brief 的候选人状态与 Routine 撰写的日报正文为英文；脚本生成的表格表头、工作表名与 jobs.csv 枚举值仍为中文）
+language = "en"
+# 出生年月；可省（省略写法：删掉本行，brief 不再给出年龄与年龄门槛提示）
+# birth_month = 1998-06-01
+
+[delivery]
+# 是否发邮件；可省，默认 true
+email = true
+# 是否同步 Google 表格；可省，默认 false（false 时 sheet_name / legacy_history_sheets 可一并省略）
+sheets = false
+# 省略写法：sheets = false 时下面两行可以不写
+# sheet_name = "Job Scan Log"
+# legacy_history_sheets = false
+
+# ---------------------------------------------------------------- 教育背景（按学位从高到低）
+[[education]]
+# 学位层级 phd|master|bachelor；必填
+level = "master"
+# 学校；必填
+institution = "某理工大学"
+# 英文校名；可省
+institution_en = "Example University of Technology"
+# 国家；可省
+country = "中国"
+# QS 排名；可省（省略写法：不写则不参与任何排名判断）
+# qs_rank = 300
+# 专业口径；可省
+field = "材料科学与工程"
+# 国内学科代码；可省
+discipline_codes = ["0805"]
+# 时段；可省
+period = "2023.09–2026.06"
+# 答辩日期；可省
+defense_date = 2026-05-20
+# 授位日期；可省，省略写法：不写则取 defense_date
+# conferral_date = 2026-06-30
+# 是否已拿证书；可省，默认 false
+diploma_received = false
+# 该阶段研究主题；可省
+topics = ["锂电池正极材料", "原位表征"]
+# 备注；可省
+# note = ""
+
+[[education]]
+level = "bachelor"
+institution = "某大学"
+country = "中国"
+field = "材料化学"
+period = "2019.09–2023.06"
+# 省略写法：bachelor 阶段只写上面几项即可，其余字段都可省
+
+[status]
+# 届别体系：cn|none；可省，默认 none。本例找德国工业界岗位，不计算国内「届」
+# （none 时 sources.toml 中含 {cohort} 槽位的关键词模板整条跳过，国内校招类别即使开启也只剩不含 {cohort} 的模板）
+cohort_system = "none"
+# 省略写法：cohort_system = none 时不要写 cohort_year；cn 时可省略，脚本按 conferral_date 推算
+# cohort_year = 2026
+# 是否海外归国；可省，默认 false
+overseas_returnee = false
+# 应届宽限月数；可省，默认 24
+fresh_grad_grace_months = 24
+# 年龄门槛；可省（省略写法：删掉本行或写 []，brief 不再提示年龄门槛）
+# age_thresholds = [35]
+# 「获学位 N 年内」门槛；可省
+# degree_years_thresholds = [3]
+
+[research]
+# 研究背景一句话；可省
+summary = { en = "Cathode materials for lithium-ion batteries with in-situ characterisation; process scale-up experience", zh = "锂离子电池正极材料与原位表征，有工艺放大经验" }
+# 可对口的学科；可省
+disciplines = ["Materials Science", "Chemistry", "Chemical Engineering", "材料科学与工程", "化学工程"]
+# 技能；可省
+skills = ["XRD", "SEM", "Electrochemical testing", "Python", "German B2"]
+
+# 研究主题，槽位 {topic}；必填（至少 1 条）
+[[research.topics]]
+id = "battery_cathode"
+weight = 3
+# 只写 en 也可以：其他语言缺失时自动回退 en
+terms = { en = ["lithium-ion cathode materials", "battery materials"] }
+
+[[research.topics]]
+id = "insitu_char"
+weight = 1
+terms = { en = ["in-situ characterisation"], de = ["In-situ-Charakterisierung"] }
+
+# 想去的方向，槽位 {domain}；可省（省略写法：不写任何 [[target.domains]]，模板中含 {domain} 的检索词会被跳过）
+[[target.domains]]
+id = "battery_rd"
+weight = 3
+terms = { en = ["battery R&D"], de = ["Batterieentwicklung"] }
+
+[[target.domains]]
+id = "materials_engineering"
+weight = 2
+terms = { en = ["materials engineering"], de = ["Werkstofftechnik"] }
+
+[target]
+# 岗位类型；可省，默认全部开启。roles 只能关掉 requires_roles 与之无交集的类别：本例 roles = [industry_rd, postdoc]
+# 会关掉 talent_program / soe_campus / public_institution / civil_service，但 cn_postdoc、national_lab（requires_roles 含 postdoc）
+# 和 industry_soe（含 industry_rd）仍会开启——不找国内岗位时请在 sources.toml 中把这些类别设 enabled = false
+roles = ["industry_rd", "postdoc"]
+# 岗位名称词，槽位 {role}；可省
+role_terms = { en = ["R&D engineer", "research scientist", "postdoc"], de = ["Entwicklungsingenieur", "Wissenschaftlicher Mitarbeiter"] }
+# 偏好取向；可省
+orientation = "Industry R&D preferred over academia"
+# 不要的方向；可省
+avoid = { en = ["sales / application engineer roles", "positions requiring native German"] }
+# 可接受的学历要求写法；可省
+degree_requirements_ok = ["Master", "MSc", "PhD or Master", "硕士及以上"]
+# 硬门槛清单；可省
+hard_requirements = ["Field matches materials/chemistry", "Degree requirement is Master or lower", "Work permit / language requirement is feasible", "Application deadline not passed"]
+# 海外院校 QS 上限；可省（省略写法：不写则不按排名过滤）
+# overseas_qs_max = 200
+
+[matching]
+# 分级口径三档；可省（省略写法：整节删掉，brief 中「分级口径」一节省略）
+high = "Battery or materials R&D role in Germany/Netherlands, Master's degree accepted"
+consider = "Related materials/chemistry role, or battery role outside preferred countries"
+reference = "Generic graduate programmes without a clear technical track"
+
+[locations]
+# 国内城市；本例不找国内岗位，可写空列表（cities 与 countries 至少一个非空）。
+# cities 为空只会让含 {city} 槽位的模板跳过，不会关闭国内类别（关闭见上面 roles 的说明）
+cities = []
+# 省略写法：cities 为空时 top_cities / provinces 可以不写
+# top_cities = 4
+# provinces = []
+
+# 海外国家，tier 越小越优先，槽位 {country}
+[[locations.countries]]
+# name 可以只写一个字符串，也可以按语言写 { en = "Germany", zh = "德国" }
+name = "Germany"
+tier = 1
+[[locations.countries]]
+name = { en = "Netherlands", zh = "荷兰" }
+tier = 2
+
+# 专项区域；可省（省略写法：不写任何 [[locations.special_zones]]，sources.toml 中引用 special_zone 的类别需同时删掉）
+
+# 简历；可省（省略写法：不写则 brief 不提示参照哪份简历）
+[[resumes]]
+lang = "en"
+path = "resume_en.md"
+use_for = "all positions"
+
+[marks]
+# 「我的标记」以这些词开头 → 不感兴趣；可省，默认 ["不要"]。输出语言为英文时可同时接受 "no"
+dismiss_prefixes = ["不要", "no:", "No:"]

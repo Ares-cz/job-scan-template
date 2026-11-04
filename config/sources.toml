@@ -1,0 +1,630 @@
+# =============================================================================
+# 模板说明：本文件是原作者（AI/机器人方向博士，关注中国与欧洲）的扫描范围，不含身份信息，
+# 但类别、点名单位、城市与公务员/专项区域都是按其画像写的。fork 后请逐类过一遍：
+# 用不到的类别设 enabled = false，units/browse 换成你领域的单位，query_templates 中的字面量按需修改。
+# Template note: this scan scope was written for the original author's field and region. After forking,
+# disable categories you don't need (enabled = false), replace units/browse with your own institutions,
+# and adjust the literal words in query_templates. See README.md.
+# =============================================================================
+# =============================================================================
+# config/sources.toml —— 扫描类别、频率预算、点名单位、可抓取列表页
+#
+# 候选人个人信息不在这里（见 config/profile.toml）。这里只回答三个问题：
+#   1. 扫什么（[[category]]：原 PROMPT 扫描范围 1–10 类各一条，第 8 类并入 [[source]]）
+#   2. 多久扫一次、每次几组关键词（[schedule] + 每类 every/offset/season/queries_per_turn）
+#   3. 哪些页面可以脚本直接抓（[[source]] fetch = "html_list"），哪些只能人工打开（browse/none）
+#
+# ---- 频率设计（目标：全周平均每天 ≤ 15 组检索，优先保证公务员与崖州湾） ----
+#   day = (今天 − schedule.epoch).days；类别在 (day + offset) % every == 0 的日子轮到。
+#   旺季 season.every 覆盖 every；当月不在 active_months 时降为每 7 天；周六日关键词数 × weekend_factor。
+#
+#   类别                 every/offset  每轮组数(模板+固定)  平均每天          理由
+#   overseas_postdoc        2 / 0        3+0 = 3        1.5              海外博后发布节奏慢、截止期长，隔天即可
+#   cn_postdoc              2 / 1        3+0 = 3        1.5              国内博后多为长期招收，隔天；与海外类错开
+#   talent_program          3 / 2        2+0 = 2        0.7              人才计划多为年度/季度窗口，3 天一轮
+#   soe_campus              2 / 1        3+0 = 3        1.5（校招季 3）  （weight 3）校招季 9–11 月改为每天（season），3–5、12 月隔天，其余月份每周
+#   industry_soe            3 / 1        2+0 = 2        0.7              其他行业国企零散发布，3 天一轮；淡季每周
+#   public_institution      2 / 1        2+0 = 2        1.0              事业单位公告零散但量大，隔天
+#   national_lab            2 / 0        3+0 = 3        1.5              与求职目标最对口，隔天 + 点名单位滚动
+#   civil_service           7 / 0        2+2 = 4        旺季 4（周末 3） 公务员：10–3 月旺季每天（season.every = 1），淡季每周 1 次；两条固定检索不计 queries_per_turn、不被裁剪
+#   special_zone_yazhouwan  2 / 0        3+2 = 5        2.5（常被裁到 3） 专项关注，每 2 天一轮（原为每天，按预算折中）；两条固定检索同上
+#   ------------------------------------------------------------------------------------
+#   「每轮组数」= 模板展开数（queries_per_turn）+ 固定检索数（pinned）。pinned 不计入 queries_per_turn，
+#   但计入每天总数与 max_queries_per_day 的裁剪比较；裁剪只砍模板组，pinned 永不被砍。
+#   旺季（11 月）实测：偶数日 ≈ 3+3+3+4+5（+2，industry_soe 或 talent_program 轮到时）= 18–20 → 裁到 15；
+#   奇数日 ≈ 3+3+2+4+2（talent_program 与 industry_soe 交替轮到）= 14；周六日模板组数减半。
+#   超过 max_queries_per_day 时 plan_tool 按 weight 从低到高逐个砍 1 组（每类至少 1 组）。
+#   `python3 tools/plan_tool.py schedule --days 14` 可打印两周日历核对。
+#
+# ---- 字段速查 ----
+#   lang            关键词语言键；profile 的 terms 缺该语言时回退 en，再回退任一
+#   requires_roles  与 profile.target.roles 无交集 → 该类别自动关闭（关掉某类：删 roles 或 enabled = false）
+#   query_templates 槽位只允许 {topic} {domain} {role} {city} {province} {country} {unit} {zone}
+#                   {year} {year_next} {cohort} {degree}；{cohort} 在 cohort_system = none 时整条跳过
+#   pinned          每轮必查的固定检索词；units 点名单位（{unit} 槽位按窗口滚动点名）
+#   browse          Routine 直接打开核对的页面（脚本抓不了的门户/人事处/课题组页）
+#   extra_instructions / level_hint   该类特殊规则与分级提示，brief 原样呈现
+# =============================================================================
+
+schema = 1
+
+[schedule]
+# 轮换基准日（算 day 用），不要随意改动，否则各类错开日会整体平移
+epoch = 2026-11-10
+# 每天检索组数软上限 / brief 中写给 Routine 的「合计不少于」
+max_queries_per_day = 15
+min_queries_per_day = 8
+# 周六日每类关键词数乘以此系数（向上取整，至少 1）
+weekend_factor = 0.5
+# fetch_tool：单源超时、整轮上限（秒）、每源最多候选数
+fetch_timeout_sec = 20
+fetch_total_sec = 120
+fetch_max_items_per_source = 40
+
+# ============================================================== 1. 海外博后/研究岗
+[[category]]
+id = "overseas_postdoc"
+name = "海外博后/研究岗"
+lang = "en"
+requires_roles = ["postdoc"]
+enabled = true
+every = 2
+offset = 0
+queries_per_turn = 3
+lookback_days = 3
+weight = 3
+query_templates = [
+  "{topic} postdoc {country}",
+  "{domain} postdoctoral researcher {year}",
+  "{unit} postdoc {domain}",
+  "{role} {topic} {country} university",
+  "site:academicpositions.com {topic} postdoc",
+]
+pinned = []
+units = [
+  "ETH Zurich", "University of Zurich", "TU Munich", "University of Bonn PhenoRob", "Lamarr Institute",
+  "TU Delft", "TU Eindhoven", "Wageningen University", "University of Twente",
+  "University of Hong Kong", "Nanyang Technological University", "National University of Singapore",
+  "Imperial College London", "University of Oxford", "EPFL", "KU Leuven", "INRIA",
+]
+browse = [
+  "https://www.nature.com/naturecareers/jobs/",
+  "https://www.academics.com/jobs",
+  "https://careers.tudelft.nl/",
+  "https://careers.epfl.ch/",
+  "https://www.epfl.ch/labs/lis/open-positions",
+  "https://careers.nus.edu.sg/",
+  "https://rpl.uni-bonn.de/opportunities/",
+  "https://www.ais.uni-bonn.de/jobs.html",
+  "https://arclab.hku.hk/OpenPositions.html",
+  "https://airlab.hku.hk/open-position",
+  "https://jobs.zalf.de/",
+]
+level_hint = "院校 QS 排名上限见 brief「分级口径」（profile.target.overseas_qs_max，未设置则不限）；要求「在候选人博士授位国以外毕业 / 具有该国以外博后经历」的项目（按 profile [[education]] 的 country 判断）只作降级参考"
+extra_instructions = "关键词用英文；国家按 profile.locations.countries 的 tier 轮换；可脚本抓取的 jobs.ac.uk / EURAXESS / jobs.ethz.ch 结果见 out/fetched.md，AcademicTransfer 需直接打开搜索页核对；AcademicPositions 不可直接访问，用 site: 检索词代替"
+
+# ============================================================== 2. 国内高校、科研院所博士后
+[[category]]
+id = "cn_postdoc"
+name = "国内高校/科研院所博士后"
+lang = "zh"
+requires_roles = ["postdoc"]
+enabled = true
+every = 2
+offset = 1
+queries_per_turn = 3
+lookback_days = 3
+weight = 3
+query_templates = [
+  "{unit} 博士后 招收 {year}",
+  "{city} {domain} 博士后 招聘",
+  "{topic} 博士后 {province}",
+  "{domain} 博士后 招聘 {year} 高校人才网",
+]
+pinned = []
+units = [
+  "南京农业大学", "南京信息工程大学", "江苏省农业科学院", "上海市农业科学院",
+  "中国农业科学院农业信息研究所", "中国农业科学院农业资源与农业区划研究所", "农业农村部南京农业机械化研究所",
+  "中国农业大学", "浙江省农业科学院", "江苏大学", "南京林业大学", "南京师范大学", "南京邮电大学",
+  "东南大学", "南京大学", "河海大学", "浙江大学", "上海交通大学",
+]
+browse = [
+  "https://www.gaoxiaojob.com/",
+  "https://talent.sciencenet.cn/",
+  "https://www.chinapostdoctor.org.cn/",
+  "https://rsc.nuaa.edu.cn/",
+  "https://rsc.nuist.edu.cn/",
+  "http://www.liuxuehr.com/",
+]
+level_hint = "课题组长期招收的博士后若方向对口可归 ⭐；笼统的全校博士后招收简章归可考虑"
+extra_instructions = "优先直接访问点名单位的人事处/博士后页面，而非仅看搜索引擎摘要；中国农科院农业信息研究所列表页由脚本抓取（见 out/fetched.md）"
+
+# ============================================================== 3. 国内人才计划/青年教师
+[[category]]
+id = "talent_program"
+name = "国内人才计划/青年教师"
+lang = "zh"
+requires_roles = ["talent_program"]
+enabled = true
+every = 3
+offset = 2
+queries_per_turn = 2
+lookback_days = 4
+weight = 2
+query_templates = [
+  "{unit} 青年研究员 招聘 {year}",
+  "{city} 高校 师资博士后 {domain}",
+  "博新计划 {year} {domain}",
+  "{province} 青年人才 计划 博士 {domain} 招聘",
+]
+pinned = []
+units = ["南京信息工程大学 攀登计划", "南京农业大学 钟山青年研究员", "博士后创新人才支持计划", "东南大学 至善博士后", "南京大学 毓秀青年学者"]
+browse = []
+level_hint = "顶级人才计划/准聘教职/博雅类等资质门槛明显过高的岗位按 learned_rules.md 现行规律处理（依据达 3 条则不推送）；青年教师/师资博后方向对口可归 ⭐"
+extra_instructions = "注意「获博士学位 N 年内」与年龄门槛，以 brief「候选人当前状态」给出的日期为准"
+
+# ============================================================== 4. 央企/国企校招
+[[category]]
+id = "soe_campus"
+name = "央企/国企校招"
+lang = "zh"
+requires_roles = ["soe_campus"]
+enabled = true
+every = 2
+offset = 1
+season = { months = [9, 10, 11], every = 1 }
+active_months = [3, 4, 5, 9, 10, 11, 12]
+queries_per_turn = 3
+lookback_days = 3
+weight = 3
+query_templates = [
+  "{unit} {cohort}届 校园招聘 博士",
+  "{cohort}届 校招 博士 {domain} {city}",
+  "央企 {cohort}届 博士 专项招聘 {domain}",
+  "{unit} 博士 招聘 研究院 {cohort}届",
+]
+pinned = []
+units = [
+  "国家电网", "中国电力科学研究院", "南瑞集团", "南方电网", "国家管网", "中国石油", "中国石化", "中国海油",
+  "中国电子", "中国电科", "中国航天科技集团", "中国航天科工集团", "中国航发", "中航工业", "中国商飞",
+  "融通公司", "中粮集团", "中国农垦", "中国移动研究院", "中国电信人工智能研究院", "中国兵器",
+]
+browse = [
+  "https://job.10086.cn/",
+]
+level_hint = "仅笼统写「博士」「理工科」的大型校招公告一般归可考虑或仅供参考；明确含 AI/算法/无人系统岗且城市在偏好内的可归 ⭐"
+extra_instructions = "牛企网博士专场汇总页由脚本抓取（见 out/fetched.md），聚合页转载的岗位须到官网核实网申截止；注意届别口径（候选人届别与校招季届别不一致时以 brief 提示为准）"
+
+# ============================================================== 5. 其他行业（航空航天、低空经济、外贸、烟草、水务、城投等地方国企）
+[[category]]
+id = "industry_soe"
+name = "其他行业国企/地方国企"
+lang = "zh"
+requires_roles = ["soe_campus", "industry_rd"]
+enabled = true
+every = 3
+offset = 1
+active_months = [3, 4, 5, 9, 10, 11, 12]
+queries_per_turn = 2
+lookback_days = 4
+weight = 1
+query_templates = [
+  "{unit} {cohort}届 招聘 博士",
+  "低空经济 {cohort}届 校招 {domain} {city}",
+  "{city} 国企 {cohort}届 博士 {domain}",
+  "烟草 {cohort}届 校园招聘 博士 研究院",
+  "{city} 城投 能源 国企 {cohort}届 博士 招聘",
+  "航空航天 研究院 {cohort}届 博士 {domain} 招聘",
+]
+pinned = []
+units = [
+  "苏豪控股", "保利集团", "招商局集团", "江苏中烟", "浙江中烟", "上海烟草集团", "安徽中烟", "中国烟草总公司",
+  "南京水务集团", "南京市城建集团", "江苏省交通控股", "航天时代低空科技", "通号低空", "中电信无人科技",
+]
+browse = [
+  "https://www.aamshanghai.com/",
+  "http://bm.cpta.com.cn/",
+]
+level_hint = "偏机电/伺服等非 AI 岗位不推送；烟草研究院、低空经济企业的算法/无人系统岗可归可考虑或 ⭐"
+extra_instructions = "烟草系统统一招聘每年 10 月前后在 bm.cpta.com.cn 开放网申，旺季注意查看"
+
+# ============================================================== 6. 事业单位
+[[category]]
+id = "public_institution"
+name = "事业单位/人才引进"
+lang = "zh"
+requires_roles = ["public_institution"]
+enabled = true
+every = 2
+offset = 1
+queries_per_turn = 2
+lookback_days = 3
+weight = 2
+query_templates = [
+  "{city} 事业单位 {year} 公开招聘 博士 公告",
+  "{province} 高层次人才 引进 博士 {domain}",
+  "{city} 人才引进 博士 {year} 公告",
+  "{province} 事业单位 博士 {domain} 招聘",
+]
+pinned = []
+units = ["江苏省属事业单位", "南京市事业单位", "北京市事业单位", "上海市事业单位", "浙江省事业单位"]
+browse = []
+level_hint = "笼统的事业单位统考公告归可考虑；岗位表中明确 AI/计算机/遥感专业且在偏好城市的可归 ⭐"
+extra_instructions = "注意年龄、应届身份与基层经历要求；岗位表通常为附件，需打开核实专业代码"
+
+# ============================================================== 7. 新型研发机构与国家实验室
+[[category]]
+id = "national_lab"
+name = "新型研发机构/国家实验室"
+lang = "zh"
+requires_roles = ["national_lab", "postdoc"]
+enabled = true
+every = 2
+offset = 0
+queries_per_turn = 3
+lookback_days = 3
+weight = 3
+query_templates = [
+  "{unit} 博士后 招聘 {year}",
+  "{unit} {domain} 研究员 招聘",
+  "{city} 实验室 {domain} 博士后 招聘",
+  "{unit} {topic} 招聘",
+]
+pinned = []
+units = [
+  "紫金山实验室", "之江实验室", "上海人工智能实验室", "北京智源人工智能研究院", "鹏城实验室",
+  "中国科学院自动化研究所", "中国科学院沈阳自动化研究所", "中国科学院合肥物质科学研究院",
+  "东南大学", "南京航空航天大学", "南京理工大学", "北航杭州创新研究院", "上海大学特种人形机器人研究院",
+]
+browse = [
+  "https://www.gaoxiaojob.com/company/detail/34275.html",
+  "https://hub.baai.ac.cn/",
+]
+level_hint = "与求职目标最对口：AI/机器人/具身智能/无人系统方向的博士后与研究岗可归 ⭐"
+extra_instructions = "units 中的高校类点名单位只查 profile 目标方向（brief「分级口径」⭐档所列方向）内的博士后与研究岗（含课题组页面），不查全校性公告；南航博士后站列表页（bsh.nuaa.edu.cn）最新公告为 2022 年，以人力资源部 rsc.nuaa.edu.cn 为准"
+
+# ============================================================== 9. 公务员考试
+# 注意：下面 query_templates 中的「江苏省考」与 pinned 中的「江苏人事考试网」写死了原作者的省份
+# （不用 {province} 槽位是为了避免对角轮询在部分日子换成其他省份的省考）。fork 后请改成你自己的省份
+# 与省级人事考试网名称，browse 中的省人社厅网址也一并替换。
+[[category]]
+id = "civil_service"
+name = "公务员考试（国考/省考）"
+lang = "zh"
+requires_roles = ["civil_service"]
+enabled = true
+every = 7
+offset = 0
+season = { months = [10, 11, 12, 1, 2, 3], every = 1 }
+queries_per_turn = 2
+lookback_days = 2
+weight = 3
+query_templates = [
+  "{cohort}年 国考 职位表 博士 {topic}",
+  "{cohort}年 江苏省考 公告 报名 职位表",
+  "{province} 选调生 {cohort} 博士 公告",
+  "国考 {cohort} 应届 留学回国 博士 职位",
+]
+pinned = ["国家公务员局 考试录用 公告", "江苏人事考试网 公务员 公告"]
+units = []
+browse = [
+  "https://m.gwy.com/gjgwy/",
+]
+level_hint = "与专业（计算机、人工智能、信息与通信、电子信息、控制、遥感等）对口且在偏好城市的职位可归 ⭐，其余归可考虑"
+extra_instructions = "每次查询公告是否发布、报名起止时间、笔试时间、博士/应届/年龄/专业可报职位及选调、定向职位。公告发布前只能注明「预计」时间并标明来源为预测，不得当作官方信息；公告发布后作为一条记录写入 jobs.csv，截止日期取报名截止，并在报名期内按预警规则提示；重点列出与候选人专业对口、工作地点在 profile 偏好城市（locations.cities 靠前者）的职位及报名要求（年龄、应届身份、基层经历）"
+
+# ============================================================== 10. 海南三亚崖州湾科技城（专项）
+[[category]]
+id = "special_zone_yazhouwan"
+name = "三亚崖州湾科技城专项"
+lang = "zh"
+requires_roles = ["postdoc", "national_lab", "public_institution", "talent_program"]
+enabled = true
+every = 2
+offset = 0
+queries_per_turn = 3
+lookback_days = 3
+weight = 3
+special_zone = "yazhouwan"
+query_templates = [
+  "{zone} 博士后 招聘 {year}",
+  "{unit} 招聘 博士 {year}",
+  "三亚 {domain} 博士后",
+  "南繁 智能育种 博士后 招聘",
+  "作物表型 无人机 三亚 招聘",
+  "三亚 深海 机器人 博士后",
+  "海南 高层次人才 引进 博士 {year}",
+  "三亚 事业单位 公开招聘 博士 {year}",
+  "{zone} 智慧农业 农业人工智能 智能装备 {role} 招聘",
+]
+pinned = ["崖州湾国家实验室 博士后 招聘", "崖州湾 青年科学家 招聘"]
+units = [
+  "崖州湾国家实验室", "崖州湾种子实验室", "中国农业科学院国家南繁研究院", "中国热带农业科学院三亚研究院", "海南大学三亚南繁研究院", "海南大学崖州湾校区",
+  "中国农业大学三亚研究院", "南京农业大学三亚研究院", "浙江大学海南研究院", "上海交通大学三亚崖州湾深海科技研究院",
+  "中国海洋大学三亚海洋研究院", "哈尔滨工程大学南海研究院", "武汉理工大学三亚科教创新园", "中国科学院深海科学与工程研究所",
+  "三亚崖州湾科技城管理局",
+]
+browse = []
+level_hint = "方向对口即可归 ⭐（不受城市排序限制），城市写「三亚」或实际工作地点"
+extra_instructions = "方向筛选：只推送与 AI、计算机视觉、作物表型、遥感、无人机、农业或水下机器人、智能装备、边缘智能对口的岗位；纯分子育种、基因编辑、生物实验类岗位不推送。每条注明实际工作地点是否在三亚。另查崖州湾国家实验室与中国农业大学、上海人工智能实验室等单位的联合博士后计划（2024 年曾面向 AI 与计算机视觉背景招聘，工作地点可能在三亚、北京、上海或深圳）。崖州湾国家实验室与科技城官网的人才招聘栏目 URL 尚未核实，确认后用 sources_tool add 记录；国聘、科研人才网等转载页也要查。科技城官网公布的其他入驻单位同样用 sources_tool add 记录。海南自贸港高层次人才认定和配套政策（安家费、科研启动经费）写入备注"
+
+# ============================================================== [[source]]：具体页面（原第 8 类 sources_found 中已核实的来源）
+# fetch = "html_list" 的由 fetch_tool 抓取；"browse" 由 Routine 直接打开；"none" 已探测为不可访问，仅作记录。
+# link_pattern/date_pattern 按 2026-11-04 探测到的真实页面结构编写；页面改版时运行
+# `python3 tools/fetch_tool.py selftest` 会报「解析 0 条」。
+
+[[source]]
+id = "jobsacuk_robotics"
+category = "overseas_postdoc"
+name = "jobs.ac.uk 机器人 / 计算机视觉搜索"
+url = "https://www.jobs.ac.uk/search/?keywords=robotics&sortOrder=1"
+pages = ["https://www.jobs.ac.uk/search/?keywords=computer+vision&sortOrder=1"]
+every = 1
+fetch = "html_list"
+link_pattern = "/job/[A-Z0-9]+/"
+block_pattern = "j-search-result__result"
+date_pattern = "(?:Closes|Expires)\\W+(\\d{1,2} [A-Za-z]{3})"
+date_format = "%d %b"
+date_kind = "deadline"
+time_attr = false
+closed_markers = ["Closing today", "Expired"]
+title_filter = "profile"
+# 标题排除词（正则，忽略大小写）：讲师/教授编制岗、PhD 奖学金、经理/技术员/行政岗不进候选；注意不要误伤 Post-doctoral
+title_exclude = "\\b(Lecturer|Professor|Faculty Position|Tutor|Reader|Dean|Head of|Manager|Technician|Administrator|Apprentice|Studentship|PhD|DPhil|Teaching)\\b|(?<!Post-)(?<!Post)Doctoral"
+status = "stable"
+notes = "每条结果一个 div.j-search-result__result，锚点 href 形如 /job/DTN496/slug，截止写成「Closes 15 Nov」（无年份 → 就近未来日期，标 inferred）；另有「Date Placed: 04 Nov」为发布日"
+
+[[source]]
+id = "euraxess_robotics"
+category = "overseas_postdoc"
+name = "EURAXESS 职位搜索（robotics / drone）"
+url = "https://euraxess.ec.europa.eu/jobs/search?keywords=robotics"
+pages = ["https://euraxess.ec.europa.eu/jobs/search?keywords=drone"]
+every = 1
+fetch = "html_list"
+link_pattern = "/jobs/\\d+$"
+block_pattern = "ecl-content-item"
+date_pattern = "Application Deadline:\\W+(\\d{1,2} [A-Za-z]{3} \\d{4})"
+date_format = "%d %b %Y"
+date_kind = "deadline"
+time_attr = true
+closed_markers = []
+title_filter = "profile"
+status = "experimental"
+notes = "每条结果一个 article.ecl-content-item，标题锚点 href 形如 /jobs/477785，截止在 <time datetime=…> 内。探测时 keywords 参数似乎未被服务端过滤（结果为全部最新职位），因此 title_filter = profile 是必要的；每页 10 条，发布很快被顶下去，需每天抓"
+
+[[source]]
+id = "ethz_jobs"
+category = "overseas_postdoc"
+name = "ETH Zurich 招聘列表"
+url = "https://jobs.ethz.ch/"
+pages = []
+every = 1
+fetch = "html_list"
+link_pattern = "/job/view/JOPG_ethz_"
+block_pattern = "job-ad__item__wrapper"
+date_pattern = "(\\d{2}\\.\\d{2}\\.\\d{4})"
+date_format = "%d.%m.%Y"
+date_kind = "published"
+time_attr = false
+closed_markers = []
+title_filter = "profile"
+max_age_days = 45
+# 排除博士生岗、学生助理、教学/行政与德语职员岗（Post-doctoral 不受影响）
+title_exclude = "(?<!Post-)(?<!Post)Doctoral|\\bPhD\\b|Studentische|Wissenschaftliche Assistenz|Hilfsassist|Lehre|Professur|Professor|Lecturer|Sachbearbeit|Mitarbeiter:in|Fachspezialist|Manager|Technician|Praktik|Intern\\b"
+status = "stable"
+notes = "全部 ~120 条在一页，每条 li.job-ad__item__wrapper，锚文本含标题 + 工作量/地点 + 「03.11.2026 | 系所」（发布日）；页面默认德语但岗位标题多为英文；RobotX Postdoctoral Fellowship 每年 10–11 月在此开放"
+
+[[source]]
+id = "niuqizp_phd"
+category = "soe_campus"
+name = "牛企网博士/博士后校招汇总"
+url = "https://campus.niuqizp.com/schedulephd-1/"
+pages = ["https://campus.niuqizp.com/schedulephd-2/"]
+every = 1
+fetch = "html_list"
+link_pattern = "/job-[A-Za-z0-9]+\\.html"
+block_pattern = "schedule-card"
+date_pattern = "~\\s*(\\d{4}[-/]\\d{1,2}[-/]\\d{1,2})"
+date_format = "%Y-%m-%d"
+date_kind = "deadline"
+time_attr = false
+closed_markers = ["已截止"]
+title_filter = ""
+max_age_days = 60
+# 排除银行/券商/医院/地产/实习等明显无关的汇总条目
+title_exclude = "银行|证券|保险|基金|信托|医院|医学|医药|药业|地产|置业|物业|实习|管培生|文旅|酒店|会计师事务所"
+status = "stable"
+notes = "每条 article.schedule-card；同一 href 出现两次（标题与「查看公告详情」），取标题锚文本；网申日期写成「2026-11-04 ~ 2026-12-02」，取「~」右侧为截止，日期分隔符偶见「/」（如 2026/10/10 ~ 2026/11/30），解析前需把「/」换成「-」；卡片含「N周后截止 / 已截止」文字。公告为聚合转载，纳入前须到官网核实"
+
+[[source]]
+id = "caas_aii_zpxx"
+category = "cn_postdoc"
+name = "中国农科院农业信息研究所招聘公告"
+url = "https://aii.caas.cn/zpxx/index.htm"
+pages = []
+every = 2
+fetch = "html_list"
+link_pattern = "(?:^|zpxx/)[0-9a-f]{32}\\.htm$"
+block_pattern = ""
+date_pattern = "(\\d{4}-\\d{2}-\\d{2})"
+date_format = "%Y-%m-%d"
+date_kind = "published"
+time_attr = false
+closed_markers = []
+title_filter = "博士后|招收|招聘|人才"
+max_age_days = 120
+status = "stable"
+notes = "列表为 ul.list13 下的 li：<span class=date>2026-10-23</span><a href=605e…htm>标题</a>，href 为相对路径（32 位 hex .htm），日期在锚点之前；页面导航区还有 ../xwdt/… 的 32 位 hex 新闻链接，link_pattern 已排除；日期取锚点前最近一个"
+
+[[source]]
+id = "academictransfer_search"
+category = "overseas_postdoc"
+name = "AcademicTransfer 关键词搜索（荷兰）"
+url = "https://www.academictransfer.com/en/jobs/?q=drone"
+pages = ["https://www.academictransfer.com/en/jobs/?q=robotics%20postdoc", "https://www.academictransfer.com/en/jobs/?q=remote%20sensing"]
+every = 2
+fetch = "browse"
+status = "stable"
+notes = "Nuxt 前端渲染，HTML 中只带首条职位，后台 API 需登录凭证 → 只能直接打开页面查看；荷兰学术岗位主要发布渠道"
+
+[[source]]
+id = "bsh_nuaa"
+category = "national_lab"
+name = "南航博士后站（含无人机研究院）"
+url = "https://bsh.nuaa.edu.cn/"
+pages = ["https://rsc.nuaa.edu.cn/"]
+every = 3
+fetch = "browse"
+status = "experimental"
+notes = "bsh.nuaa.edu.cn 招收信息列表最新公告为 2022-03，基本不更新；南航博士后与研究岗实际发布在人力资源部 rsc.nuaa.edu.cn（如无人机研究院、飞行/推进智能控制创新实验室），以后者为准"
+
+[[source]]
+id = "academicpositions_robotics"
+category = "overseas_postdoc"
+name = "AcademicPositions 机器人搜索"
+url = "https://www.academicpositions.com/find-jobs?keywords=robotics"
+every = 7
+fetch = "none"
+status = "experimental"
+notes = "探测返回 Cloudflare 挑战页（403「Just a moment」），脚本与直接访问均不可用；需要时由 Routine 用搜索引擎 site: 检索代替"
+
+[[source]]
+id = "jobbank_dk"
+category = "overseas_postdoc"
+name = "jobbank.dk（丹麦 DTU/Aalborg）"
+url = "https://jobbank.dk/"
+every = 7
+fetch = "none"
+status = "experimental"
+notes = "探测 403；丹麦不在偏好国家列表内，仅在候选人扩展国家范围时启用"
+
+[[source]]
+id = "stellenmarkt_de"
+category = "overseas_postdoc"
+name = "stellenmarkt.de（德国高校岗位聚合）"
+url = "https://www.stellenmarkt.de/"
+every = 7
+fetch = "none"
+status = "experimental"
+notes = "探测 429（限流）；德国岗位改用 academics.de（browse）与 EURAXESS"
+
+# ============================================================== 需人工打开的官方页面（JS 单页应用 / 反爬 / 云端 503）
+# 这些页面脚本与 WebFetch 都读不到内容，brief 会标注「需人工打开：…」。Routine 打不开时改用搜索引擎的官方转载，
+# 并在邮件「本次未能访问的来源」中列出；若 Routine 侧能访问，以官方页面为准。access_note 为标注文字。
+
+[[source]]
+id = "scs_gov_national_exam"
+category = "civil_service"
+name = "国家公务员局 · 国考专题"
+url = "https://bm.scs.gov.cn/"
+pages = ["http://www.scs.gov.cn/gkIndex.html"]
+every = 1
+fetch = "browse"
+access_note = "官网反爬/云端 503，脚本与 WebFetch 均打不开；报名确认、准考证、成绩等官方时间以此为准，打不开时用 m.gwy.com 等转载并标「需核实」"
+status = "stable"
+notes = "2026-11-04 探测：bm.scs.gov.cn 连接超时，www.scs.gov.cn 返回反爬 JS"
+
+[[source]]
+id = "jshrss_provincial_exam"
+category = "civil_service"
+name = "江苏省人社厅 / 江苏人事考试网 · 省考专题"
+url = "https://jshrss.jiangsu.gov.cn/col/col93729/index.html"
+pages = ["https://www.jszzb.gov.cn/2027ndkslygwyzt/zkgg/index.html"]
+every = 1
+fetch = "browse"
+access_note = "公告正文可读，但「岗位信息」栏目与省委组织部专题的职位表为动态加载/附件，脚本取不到，需人工下载职位表核对专业"
+status = "stable"
+notes = "2026-11-04 探测：公告页 art_93730_11852195 可读；职位表 xls 未取到"
+
+[[source]]
+id = "sgcc_portal"
+category = "soe_campus"
+name = "国家电网招聘平台"
+url = "https://www.sgcc.com.cn/"
+pages = ["https://zhaopin.sgcc.com.cn/"]
+every = 2
+fetch = "browse"
+access_note = "官网云端 503、招聘平台为 JS 页面；各批次公告用聚合页（m.gwy.com/gqzp、牛企网）转载核对"
+status = "stable"
+notes = "2026-11-04 探测 503"
+
+[[source]]
+id = "csg_portal"
+category = "soe_campus"
+name = "南方电网员工招聘系统"
+url = "https://zhaopin.csg.cn/"
+every = 2
+fetch = "browse"
+access_note = "Vue 单页应用，脚本/WebFetch 无内容；网申窗口与批次以聚合页转载核对"
+status = "stable"
+notes = "2026-11-04 探测：页面无服务端内容"
+
+[[source]]
+id = "iguopin_portal"
+category = "soe_campus"
+name = "国聘网（央企校招统一入口）"
+url = "https://www.iguopin.com/"
+every = 2
+fetch = "browse"
+access_note = "JS 单页应用，脚本/WebFetch 无内容；各央企专项（如兵器未来科学家）以其专属国聘子站或转载页核对"
+status = "stable"
+notes = "2026-11-04 探测：页面无服务端内容"
+
+[[source]]
+id = "pcl_hr"
+category = "national_lab"
+name = "鹏城实验室招聘站"
+url = "https://hr.pcl.ac.cn/"
+every = 2
+fetch = "browse"
+access_note = "北森 JS 页面，脚本读不到；岗位以高校人才网/峰会页面转载核对"
+status = "stable"
+notes = "2026-11-04 探测：JS 渲染"
+
+[[source]]
+id = "casia_zhiye"
+category = "national_lab"
+name = "中科院自动化所招聘（智聘）"
+url = "https://casia.zhiye.com/"
+pages = ["https://ia.cas.cn/rcdw/rczp/"]
+every = 2
+fetch = "browse"
+access_note = "智聘为 JS 渲染、所官网招聘栏目云端打不开；用 gaoxiaojob 自动化所页与搜索引擎转载核对"
+status = "stable"
+notes = "2026-11-04 探测：均不可读"
+
+[[source]]
+id = "shlab_joinus"
+category = "national_lab"
+name = "上海人工智能实验室 · 加入我们"
+url = "https://www.shlab.org.cn/joinus/campus"
+pages = ["https://www.shlab.org.cn/joinus/social"]
+every = 2
+fetch = "browse"
+access_note = "职位列表为前端模板动态加载，脚本只见空模板；校招原文在微信公众号（需验证），以转载核对"
+status = "stable"
+notes = "2026-11-04 探测：模板无数据"
+
+[[source]]
+id = "hzii_buaa"
+category = "national_lab"
+name = "北航杭州创新研究院"
+url = "https://hzii.buaa.edu.cn/"
+every = 3
+fetch = "browse"
+access_note = "云端持续 403；Routine 侧若可访问以官网为准，否则用搜索引擎转载"
+status = "experimental"
+notes = "2026-11-04 探测 403"
+
+[[source]]
+id = "yzw_iguopin"
+category = "special_zone_yazhouwan"
+name = "崖州湾国家实验室国聘报名站"
+url = "https://yzwgjsys.iguopin.com/"
+every = 2
+fetch = "browse"
+access_note = "React 单页应用，脚本读不到岗位列表；招聘公告（一）～（四）的岗位以高校人才网转载页 announcement/job-list?id=375993 核对"
+status = "stable"
+notes = "2026-11-04 探测：页面无服务端内容"
+
