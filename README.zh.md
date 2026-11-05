@@ -4,6 +4,13 @@ English: [README.md](README.md) · 架构说明：[docs/ARCHITECTURE.md](docs/AR
 
 一个由 **Claude 定时任务（Routine）** 驱动、**配置化**的求职信息助理：每天按 `PROMPT.md` 的流程和 `config/` 中的画像与扫描计划，检索公开招聘信息（海外博后、国内博士后/人才计划、央企国企校招、事业单位、国家实验室、公务员考试、专项区域等，类别可增删），把匹配岗位记入 `jobs.csv`，同步到 Google 表格，并发送 HTML 日报邮件。
 
+<p align="center">
+  <img src="docs/img/report.png" alt="日报邮件：今日新增与匹配理由、按状态上色的岗位总表、已投递跟踪、检索概况" width="48%">
+  &nbsp;
+  <img src="docs/img/brief.png" alt="由画像生成的每日简报：候选人状态、轮换关键词、点名单位、需人工打开的页面" width="48%">
+</p>
+<p align="center"><sub>左：日报邮件；右：Routine 开工前读的计划简报。均由虚构示例画像 <code>config/profile.example.toml</code> 生成。</sub></p>
+
 分工：
 
 - **人**：维护 `config/profile.toml`（你是谁、要找什么、硬门槛、偏好城市）和 `config/sources.toml`（扫什么、多久扫一次、点名单位、可抓取的列表页），在在线表格「我的标记」列写「不要：原因」「已投递」等。

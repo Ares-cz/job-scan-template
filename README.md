@@ -6,6 +6,13 @@
 
 It was built by a PhD candidate in AI / robotics looking at postdocs, national labs, state-owned-enterprise campus hiring and civil-service exams in China and Europe. Everything specific to that person lives in `config/profile.toml`; the rest is generic.
 
+<p align="center">
+  <img src="docs/img/report.png" alt="Daily report email: new postings with match reasons, colour-coded master table, application tracker, coverage stats" width="48%">
+  &nbsp;
+  <img src="docs/img/brief.png" alt="Daily brief generated from the profile: candidate status, rotated keywords, named institutions, pages to open manually" width="48%">
+</p>
+<p align="center"><sub>Left: the daily report email. Right: the plan brief the Routine reads first. Both generated from the fictional <code>config/profile.example.toml</code>.</sub></p>
+
 ## How it works
 
 The design principle: **the LLM judges, scripts compute.**
