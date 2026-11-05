@@ -119,10 +119,11 @@ weight = 2
 terms = { en = ["materials engineering"], de = ["Werkstofftechnik"] }
 
 [target]
-# 岗位类型；可省，默认全部开启。roles 只能关掉 requires_roles 与之无交集的类别：本例 roles = [industry_rd, postdoc]
-# 会关掉 talent_program / soe_campus / public_institution / civil_service，但 cn_postdoc、national_lab（requires_roles 含 postdoc）
-# 和 industry_soe（含 industry_rd）仍会开启——不找国内岗位时请在 sources.toml 中把这些类别设 enabled = false
-roles = ["industry_rd", "postdoc"]
+# 岗位类型；可省，默认全部开启。roles 只能关掉 requires_roles 与之无交集的类别：本例开启了
+# industry_rd / postdoc / national_lab / talent_program / public_institution，关掉了 soe_campus 与 civil_service
+# （本例 cohort_system = none，含 {cohort} 槽位的校招模板会被跳过）。不找国内岗位时请在 sources.toml 中把
+# cn_postdoc / national_lab / talent_program / public_institution / industry_soe 设 enabled = false
+roles = ["industry_rd", "postdoc", "national_lab", "talent_program", "public_institution"]
 # 岗位名称词，槽位 {role}；可省
 role_terms = { en = ["R&D engineer", "research scientist", "postdoc"], de = ["Entwicklungsingenieur", "Wissenschaftlicher Mitarbeiter"] }
 # 偏好取向；可省
