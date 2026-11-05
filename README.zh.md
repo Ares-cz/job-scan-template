@@ -117,14 +117,14 @@ Routine 触发
 `python3 tools/plan_tool.py schedule --days 14 --today 2026-11-05` 的示例输出（真实配置）：
 
 ```
-两周日历（自 2026-11-05 起 14 天；epoch 2026-11-10；格式：类别id×关键词数，含固定检索）
-2026-11-05 星期四 day= -5 | 合计 14 | cn_postdoc×3, talent_program×2, soe_campus×3, public_institution×2, civil_service×4
-2026-11-06 星期五 day= -4 | 合计 15 | overseas_postdoc×3, soe_campus×3, industry_soe×1, national_lab×2, civil_service×3, special_zone_yazhouwan×3
-2026-11-07 星期六 day= -3 | 合计  8 | cn_postdoc×2, soe_campus×2, public_institution×1, civil_service×3
-2026-11-08 星期日 day= -2 | 合计 14 | overseas_postdoc×2, talent_program×1, soe_campus×2, national_lab×2, civil_service×3, special_zone_yazhouwan×4
-2026-11-09 星期一 day= -1 | 合计 14 | cn_postdoc×3, soe_campus×3, industry_soe×2, public_institution×2, civil_service×4
-2026-11-10 星期二 day=  0 | 合计 15 | overseas_postdoc×3, soe_campus×3, national_lab×3, civil_service×3, special_zone_yazhouwan×3
-2026-11-11 星期三 day=  1 | 合计 14 | cn_postdoc×3, talent_program×2, soe_campus×3, public_institution×2, civil_service×4
+两周日历（自 2026-11-05 起 14 天；epoch 2025-12-09；格式：类别id×关键词数，含固定检索）
+2026-11-05 星期四 day=331 | 合计 14 | cn_postdoc×3, talent_program×2, soe_campus×3, public_institution×2, civil_service×4
+2026-11-06 星期五 day=332 | 合计 15 | overseas_postdoc×3, soe_campus×3, industry_soe×1, national_lab×2, civil_service×3, special_zone_yazhouwan×3
+2026-11-07 星期六 day=333 | 合计  8 | cn_postdoc×2, soe_campus×2, public_institution×1, civil_service×3
+2026-11-08 星期日 day=334 | 合计 14 | overseas_postdoc×2, talent_program×1, soe_campus×2, national_lab×2, civil_service×3, special_zone_yazhouwan×4
+2026-11-09 星期一 day=335 | 合计 14 | cn_postdoc×3, soe_campus×3, industry_soe×2, public_institution×2, civil_service×4
+2026-11-10 星期二 day=336 | 合计 15 | overseas_postdoc×3, soe_campus×3, national_lab×3, civil_service×3, special_zone_yazhouwan×3
+2026-11-11 星期三 day=337 | 合计 14 | cn_postdoc×3, talent_program×2, soe_campus×3, public_institution×2, civil_service×4
 …
 ```
 

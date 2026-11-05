@@ -447,7 +447,7 @@ def _count_lines(path: str) -> int:
 def render_brief(plan: dict) -> str:
     today = dt.date.fromisoformat(plan["today"])
     L: list[str] = []
-    L.append(f"# 今日计划简报 {plan['today']}（{pt.weekday_zh(today)}，day={plan['day']}）")
+    L.append(f"# 今日计划简报 {plan['today']}（{pt.weekday_zh(today)}）")
     L.append("")
     L.append(f"> {plan['generated_at_note']}。先读完本文再开始检索；只检索「今日计划」列出的类别与关键词。")
     L.append("")

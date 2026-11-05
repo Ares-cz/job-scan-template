@@ -49,8 +49,8 @@
 schema = 1
 
 [schedule]
-# 轮换基准日（算 day 用），不要随意改动，否则各类错开日会整体平移
-epoch = 2026-11-10
+# 轮换基准日（算 day 用），设在过去即可；不要随意改动，否则各类错开日会整体平移（改动量取 42 的倍数可保持相位）
+epoch = 2025-12-09
 # 每天检索组数软上限 / brief 中写给 Routine 的「合计不少于」
 max_queries_per_day = 15
 min_queries_per_day = 8
